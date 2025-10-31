@@ -66,6 +66,31 @@ export const validateCaptcha = (captchaId, userInput) => {
   return isValid;
 };
 
+// Verificación no destructiva para feedback de UI
+export const checkCaptcha = async (req, res) => {
+  try {
+    const { captchaId, captchaInput } = req.body || {};
+    if (!captchaId || !captchaInput) {
+      return res.status(400).json({ valid: false, message: "Faltan parámetros" });
+    }
+
+    const captchaData = captchaStore.get(captchaId);
+    if (!captchaData) {
+      return res.status(400).json({ valid: false, message: "CAPTCHA no encontrado" });
+    }
+
+    if (Date.now() > captchaData.expires) {
+      return res.status(400).json({ valid: false, message: "CAPTCHA expirado" });
+    }
+
+    const valid = captchaData.text === String(captchaInput).toLowerCase().trim();
+    return res.json({ valid });
+  } catch (error) {
+    console.error('Error verificando CAPTCHA:', error);
+    return res.status(500).json({ valid: false, message: 'Error interno del servidor' });
+  }
+};
+
 // Función para limpiar captchas expirados
 const cleanExpiredCaptchas = () => {
   const now = Date.now();
