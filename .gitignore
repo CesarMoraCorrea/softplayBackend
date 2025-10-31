@@ -1,0 +1,44 @@
+# Dependencias
+/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Archivos de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Directorios de cobertura
+coverage
+
+# Archivos temporales
+.tmp
+.temp
+
+# Archivos de compilación
+/dist
+/build
+
+# Metadatos de Vercel CLI
+.vercel
+
+# Archivos de caché
+.cache
+.npm
+.eslintcache
+
+# Excepto el archivo .gitkeep en uploads
+/uploads/*
+!/uploads/.gitkeep
