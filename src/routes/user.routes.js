@@ -7,7 +7,7 @@ import {
   toggleUserStatus,
   deleteUser
 } from "../controllers/user.controller.js";
-import { protect, authorize } from "../middleware/auth.js";
+import { protect, authorize } from "../middlewares/auth.js";
 import { ROLES } from "../utils/roles.js";
 
 const router = Router();
