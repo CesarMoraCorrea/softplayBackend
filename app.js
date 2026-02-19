@@ -3,14 +3,14 @@ import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import connectDB from "./config/db.js";
-import authRoutes from "./routes/auth.routes.js";
-import canchaRoutes from "./routes/cancha.routes.js";
-import reservaRoutes from "./routes/reserva.routes.js";
-import uploadRoutes from "./routes/upload.routes.js";
-import paymentRoutes from "./routes/payment.routes.js";
-import userRoutes from "./routes/user.routes.js";
-import captchaRoutes from "./routes/captcha.routes.js";
+import connectDB from "./src/config/db.js";
+import authRoutes from "./src/routes/auth.routes.js";
+import canchaRoutes from "./src/routes/cancha.routes.js";
+import reservaRoutes from "./src/routes/reserva.routes.js";
+import uploadRoutes from "./src/routes/upload.routes.js";
+import paymentRoutes from "./src/routes/payment.routes.js";
+import userRoutes from "./src/routes/user.routes.js";
+import captchaRoutes from "./src/routes/captcha.routes.js";
 
 // Cargar variables de entorno y conectar a la BD
 dotenv.config();
