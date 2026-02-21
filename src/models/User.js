@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true, select: false },
   role: { type: String, enum: ALL_ROLES, default: ROLES.USER },
   phone: String,
+  ciudad: { type: String, default: "Cali" },
   activo: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
