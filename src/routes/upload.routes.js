@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { upload, handleUpload, streamFile } from "../controllers/upload.controller.js";
-import { protect, isAdminCancha } from "../middleware/auth.js";
+import { protect, isAdminCancha } from "../middlewares/auth.js";
 
 const router = Router();
 router.post("/", protect, isAdminCancha, upload.array("files", 5), handleUpload);
