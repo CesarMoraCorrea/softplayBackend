@@ -5,6 +5,13 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const normalizeText = (text) => {
+  return String(text)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, ""); // Remover tildes y acentos
+};
+
 const haversineKm = (lat1, lng1, lat2, lng2) => {
   const toRad = (value) => (value * Math.PI) / 180;
   const earthRadiusKm = 6371;
@@ -96,7 +103,8 @@ export const listSedes = async (req, res) => {
       lat,
       lng,
       radius,
-      view
+      view,
+      sedeId // Nuevo parámetro para filtrar escenarios por sede
     } = req.query;
 
     const sedes = await Sede.find({ activa: true }).sort({ createdAt: -1 }).limit(150);
@@ -104,12 +112,17 @@ export const listSedes = async (req, res) => {
     if (view === "escenarios") {
       let escenarios = sedes.flatMap(flattenSedeEscenarios);
 
+      // Filtrar por sedeId si se proporciona
+      if (sedeId) {
+        escenarios = escenarios.filter((item) => String(item.sedeId) === String(sedeId));
+      }
+
       if (q) {
-        const term = String(q).toLowerCase();
+        const term = normalizeText(q);
         escenarios = escenarios.filter((item) =>
           [item.nombre, item.direccion, item.barrio, item.tipoCancha]
             .filter(Boolean)
-            .some((field) => String(field).toLowerCase().includes(term))
+            .some((field) => normalizeText(field).includes(term))
         );
       }
 
@@ -180,12 +193,37 @@ export const listSedes = async (req, res) => {
     });
 
     if (q) {
-      const term = String(q).toLowerCase();
-      sedesPayload = sedesPayload.filter((item) =>
-        [item.nombre, item.ubicacion?.direccion, item.ubicacion?.barrio]
-          .filter(Boolean)
-          .some((field) => String(field).toLowerCase().includes(term))
-      );
+      const term = normalizeText(q);
+      // Filtrar y ordenar por relevancia
+      sedesPayload = sedesPayload
+        .map((item) => {
+          let relevancia = 0;
+          
+          // Búsqueda exacta en nombre: relevancia alta
+          if (normalizeText(item.nombre).includes(term)) {
+            relevancia += 100;
+          }
+          
+          // Búsqueda en dirección: relevancia media
+          if (normalizeText(item.ubicacion?.direccion || "").includes(term)) {
+            relevancia += 50;
+          }
+          
+          // Búsqueda en barrio: relevancia media
+          if (normalizeText(item.ubicacion?.barrio || "").includes(term)) {
+            relevancia += 50;
+          }
+          
+          // Búsqueda en tipoDeporte de escenarios: relevancia media-baja
+          const tiposDeDeporte = (item.escenarios || []).map((e) => e.tipoDeporte);
+          if (tiposDeDeporte.some((tipo) => normalizeText(tipo).includes(term))) {
+            relevancia += 75;
+          }
+          
+          return { ...item, relevancia };
+        })
+        .filter((item) => item.relevancia > 0) // Solo sedes con al menos una coincidencia
+        .sort((a, b) => b.relevancia - a.relevancia); // Ordenar por relevancia descendente
     }
 
     const min = toNumber(minPrice, 0);
