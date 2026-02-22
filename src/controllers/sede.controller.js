@@ -66,9 +66,9 @@ const flattenSedeEscenarios = (sedeDoc) => {
   return (sede.escenarios || [])
     .filter((escenario) => escenario.activo !== false)
     .map((escenario) => ({
-      _id: escenario._id,
-      escenarioId: escenario._id,
-      sedeId: sede._id,
+      _id: String(escenario._id),
+      escenarioId: String(escenario._id),
+      sedeId: String(sede._id),
       nombre: `${sede.nombre} - ${escenario.nombre}`,
       direccion: sede?.ubicacion?.direccion,
       barrio: sede?.ubicacion?.barrio,
@@ -303,9 +303,9 @@ export const getEscenario = async (req, res) => {
 
     const coordinates = sede?.ubicacion?.coordenadas?.coordinates || [];
     res.json({
-      _id: escenario._id,
-      escenarioId: escenario._id,
-      sedeId: sede._id,
+      _id: String(escenario._id),
+      escenarioId: String(escenario._id),
+      sedeId: String(sede._id),
       sedeNombre: sede.nombre,
       nombre: escenario.nombre,
       direccion: sede?.ubicacion?.direccion,
