@@ -22,6 +22,19 @@ const computeDurationHours = (horaInicio, horaFin) => {
   return (end - start) / 60;
 };
 
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    if (typeof value.$oid === "string") return value.$oid.trim();
+    if (typeof value.toString === "function") {
+      const parsed = value.toString();
+      return parsed && parsed !== "[object Object]" ? parsed.trim() : "";
+    }
+  }
+  return "";
+};
+
 const normalizeReservaOutput = (reserva, sede, escenario) => {
   const coordinates = sede?.ubicacion?.coordenadas?.coordinates || [];
   const horas = computeDurationHours(reserva.horaInicio, reserva.horaFin);
@@ -77,20 +90,36 @@ export const crearReserva = async (req,res) => {
       horas
     } = req.body;
 
-    const resolvedEscenarioId = escenarioId || canchaId;
+    const resolvedEscenarioId = normalizeId(escenarioId) || normalizeId(canchaId);
     if (!resolvedEscenarioId) {
       return res.status(400).json({ message: "Debes enviar el escenario a reservar" });
     }
 
-    let sede = sedeId
-      ? await Sede.findById(sedeId)
-      : await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
+    const resolvedSedeId = normalizeId(sedeId);
+
+    let sede = null;
+    if (resolvedSedeId) {
+      sede = await Sede.findById(resolvedSedeId);
+      if (!sede) {
+        sede = await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
+      }
+    } else {
+      sede = await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
+    }
 
     if(!sede) return res.status(404).json({ message: "Sede no existe" });
 
-    const escenario = sede.escenarios.id(resolvedEscenarioId);
+    let escenario = sede.escenarios.id(resolvedEscenarioId);
     if (!escenario) {
-      return res.status(404).json({ message: "Escenario no existe en la sede" });
+      const fallbackSede = await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
+      if (!fallbackSede) {
+        return res.status(404).json({ message: "Escenario no existe en la sede" });
+      }
+      sede = fallbackSede;
+      escenario = sede.escenarios.id(resolvedEscenarioId);
+      if (!escenario) {
+        return res.status(404).json({ message: "Escenario no existe en la sede" });
+      }
     }
 
     if (!escenario.activo) {
