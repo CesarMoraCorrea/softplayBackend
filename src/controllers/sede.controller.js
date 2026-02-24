@@ -31,7 +31,15 @@ const normalizeSedePayload = (payload, userId) => {
   const barrio = payload?.ubicacion?.barrio || payload?.barrio || "Sin barrio";
 
   const escenarios = Array.isArray(payload?.escenarios) && payload.escenarios.length
-    ? payload.escenarios
+    ? payload.escenarios.map((esc) => ({
+        ...esc,
+        // Asegurar que cada escenario tenga _id (Mongoose lo generará al guardar si no existe)
+        nombre: esc.nombre || "Escenario principal",
+        tipoDeporte: esc.tipoDeporte || "Fútbol",
+        superficie: esc.superficie || "Sintética",
+        precioPorHora: toNumber(esc.precioPorHora, 0),
+        activo: esc.activo !== false,
+      }))
     : [{
         nombre: payload?.nombre || "Escenario principal",
         tipoDeporte: payload?.tipoCancha || payload?.tipoDeporte || "Fútbol",
@@ -295,10 +303,14 @@ export const getSede = async (req, res) => {
 
 export const getEscenario = async (req, res) => {
   try {
-    const sede = await Sede.findOne({ "escenarios._id": req.params.id });
+    const escenarioIdParam = req.params.id;
+    const sede = await Sede.findOne({ "escenarios._id": escenarioIdParam });
     if (!sede) return res.status(404).json({ message: "Escenario no encontrado" });
 
-    const escenario = sede.escenarios.id(req.params.id);
+    // Buscar escenario por ID dentro de escenarios array
+    const escenario = sede.escenarios.find(
+      (esc) => String(esc._id) === String(escenarioIdParam)
+    );
     if (!escenario) return res.status(404).json({ message: "Escenario no encontrado" });
 
     const coordinates = sede?.ubicacion?.coordenadas?.coordinates || [];

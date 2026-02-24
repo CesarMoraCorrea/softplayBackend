@@ -1,5 +1,6 @@
 import Reserva from "../models/Reserva.js";
 import Sede from "../models/Sede.js";
+import { ROLES } from "../utils/roles.js";
 
 const parseTimeMinutes = (time) => {
   if (!time || typeof time !== "string" || !time.includes(":")) return null;
@@ -83,43 +84,42 @@ export const crearReserva = async (req,res) => {
     const {
       sedeId,
       escenarioId,
-      canchaId,
       fecha,
       horaInicio,
       horaFin,
       horas
     } = req.body;
 
-    const resolvedEscenarioId = normalizeId(escenarioId) || normalizeId(canchaId);
+    const resolvedSedeId = normalizeId(sedeId);
+    const resolvedEscenarioId = normalizeId(escenarioId);
+
+    if (!resolvedSedeId) {
+      return res.status(400).json({ message: "Debes enviar la sede a reservar" });
+    }
+
     if (!resolvedEscenarioId) {
       return res.status(400).json({ message: "Debes enviar el escenario a reservar" });
     }
 
-    const resolvedSedeId = normalizeId(sedeId);
+    console.log(`[crearReserva] Buscando: sedeId=${resolvedSedeId}, escenarioId=${resolvedEscenarioId}`);
 
-    let sede = null;
-    if (resolvedSedeId) {
-      sede = await Sede.findById(resolvedSedeId);
-      if (!sede) {
-        sede = await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
-      }
-    } else {
-      sede = await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
-    }
+    const sede = await Sede.findById(resolvedSedeId);
 
     if(!sede) return res.status(404).json({ message: "Sede no existe" });
 
-    let escenario = sede.escenarios.id(resolvedEscenarioId);
+    console.log(`[crearReserva] Sede encontrada: ${sede.nombre}, escenarios disponibles:`, 
+      sede.escenarios.map(e => ({ id: String(e._id), nombre: e.nombre }))
+    );
+
+    // Buscar escenario por ID dentro de escenarios array
+    let escenario = sede.escenarios.find(
+      (esc) => String(esc._id) === String(resolvedEscenarioId)
+    );
+
     if (!escenario) {
-      const fallbackSede = await Sede.findOne({ "escenarios._id": resolvedEscenarioId });
-      if (!fallbackSede) {
-        return res.status(404).json({ message: "Escenario no existe en la sede" });
-      }
-      sede = fallbackSede;
-      escenario = sede.escenarios.id(resolvedEscenarioId);
-      if (!escenario) {
-        return res.status(404).json({ message: "Escenario no existe en la sede" });
-      }
+      console.error(`[crearReserva] Escenario no encontrado. SedeId: ${resolvedSedeId}, EscenarioId: ${resolvedEscenarioId}`);
+      console.error(`[crearReserva] Escenarios disponibles en sede:`, sede.escenarios.map(e => ({ id: String(e._id), nombre: e.nombre })));
+      return res.status(404).json({ message: "Escenario no existe en la sede" });
     }
 
     if (!escenario.activo) {
@@ -188,7 +188,7 @@ export const actualizarEstado = async (req,res) => {
     
     // Verificar permisos: el usuario puede cancelar sus propias reservas o ser admin
     const isOwner = reserva.usuario.toString() === req.user._id.toString();
-    const isAdmin = req.user.roles?.includes('admin_cancha') || req.user.roles?.includes('admin_sistema');
+    const isAdmin = req.user.role === ROLES.ADMIN_CANCHA || req.user.role === ROLES.ADMIN_SISTEMA;
     
     if (!isOwner && !isAdmin) {
       return res.status(403).json({ message: "No tienes permiso para modificar esta reserva" });
@@ -228,9 +228,11 @@ export const getReservaById = async (req,res) => {
     if (!reserva) return res.status(404).json({ message: "Reserva no encontrada" });
     
     // Verificar que la reserva pertenezca al usuario autenticado o sea admin
-    if (reserva.usuario.toString() !== req.user._id.toString() && 
-        !req.user.roles?.includes('admin_cancha') && 
-        !req.user.roles?.includes('admin_sistema')) {
+    if (
+      reserva.usuario.toString() !== req.user._id.toString() &&
+      req.user.role !== ROLES.ADMIN_CANCHA &&
+      req.user.role !== ROLES.ADMIN_SISTEMA
+    ) {
       return res.status(403).json({ message: "No tienes permiso para ver esta reserva" });
     }
 
