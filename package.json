@@ -3,16 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
-"scripts": {
-  "dev": "nodemon server.js",
-  "kill-port": "lsof -ti:5000 | xargs -r kill -9",
-  "dev:clean": "npm run kill-port; npm run dev",
-  "seed:sedes": "node scripts/seedSedes.js",
-  "check:scenario-ids": "node scripts/checkScenarioIds.js",
-  "check:api": "node scripts/checkAPI.js",
-  "migrate:scenario-ids": "node scripts/migrateScenarioIds.js",
-  "migrate:scenario-ids-raw": "node scripts/migrateScenarioIdsRaw.js"
-},
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

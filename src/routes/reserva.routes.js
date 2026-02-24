@@ -5,7 +5,7 @@ import { protect, isAdminCancha } from "../middlewares/auth.js";
 const router = Router();
 router.post("/", protect, crearReserva);
 router.get("/mias", protect, misReservas);
-router.get("/sede/:sedeId", protect, isAdminCancha, reservasDeCancha);
+router.get("/cancha/:canchaId", protect, isAdminCancha, reservasDeCancha);
 router.patch("/:id/estado", protect, actualizarEstado);
 router.get("/:id", protect, getReservaById);
 export default router;
