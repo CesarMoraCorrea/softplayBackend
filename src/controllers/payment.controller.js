@@ -18,7 +18,7 @@ export const createPaymentIntent = async (req, res) => {
       return res.status(403).json({ message: "No tienes permiso para pagar esta reserva" });
     }
     
-    if (reserva.estadoPago === "pagado") {
+    if (reserva.estado === "pagada") {
       return res.status(400).json({ message: "Esta reserva ya está pagada" });
     }
     
@@ -98,7 +98,7 @@ export const confirmPayment = async (req, res) => {
       const paymentIntent = await stripe.paymentIntents.retrieve(reserva.paymentIntentId);
       
       if (paymentIntent.status === "succeeded") {
-        reserva.estadoPago = "pagado";
+        reserva.estado = "pagada";
         reserva.paymentStatus = "succeeded";
         reserva.transactionId = paymentIntent.id;
         reserva.paymentDate = new Date();
@@ -107,13 +107,13 @@ export const confirmPayment = async (req, res) => {
       }
     } else if (paymentMethod === "paypal") {
       // Simulación de confirmación de PayPal
-      reserva.estadoPago = "pagado";
+      reserva.estado = "pagada";
       reserva.paymentStatus = "succeeded";
       reserva.transactionId = transactionId || reserva.paymentIntentId;
       reserva.paymentDate = new Date();
     } else if (paymentMethod === "test") {
       // Confirmación automática para modo de prueba
-      reserva.estadoPago = "pagado";
+      reserva.estado = "pagada";
       reserva.paymentStatus = "succeeded";
       reserva.transactionId = transactionId || reserva.paymentIntentId;
       reserva.paymentDate = new Date();
@@ -125,8 +125,7 @@ export const confirmPayment = async (req, res) => {
       message: "Pago confirmado exitosamente",
       reserva: {
         _id: reserva._id,
-        estadoPago: reserva.estadoPago,
-        estado: reserva.estadoPago === "pagado" ? "pagada" : "pendiente",
+        estado: reserva.estado,
         paymentStatus: reserva.paymentStatus,
         transactionId: reserva.transactionId,
         paymentDate: reserva.paymentDate
@@ -159,7 +158,7 @@ export const stripeWebhook = async (req, res) => {
       if (reservaId) {
         const reserva = await Reserva.findById(reservaId);
         if (reserva) {
-          reserva.estadoPago = "pagado";
+          reserva.estado = "pagada";
           reserva.paymentStatus = "succeeded";
           reserva.transactionId = paymentIntent.id;
           reserva.paymentDate = new Date();
