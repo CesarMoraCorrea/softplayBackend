@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.routes.js";
-import canchaRoutes from "./routes/cancha.routes.js";
+import sedeRoutes from "./routes/sede.routes.js";
 import reservaRoutes from "./routes/reserva.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
@@ -29,7 +29,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Rutas
 app.use("/api/auth", authRoutes);
-app.use("/api/canchas", canchaRoutes);
+app.use("/api/sedes", sedeRoutes);
 app.use("/api/reservas", reservaRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/payments", paymentRoutes);
@@ -37,6 +37,6 @@ app.use("/api/users", userRoutes);
 app.use("/api/captcha", captchaRoutes);
 
 // Healthcheck
-app.get("/api/health", (req, res) => res.json({ ok: true, service: "canchas-backend" }));
+app.get("/api/health", (req, res) => res.json({ ok: true, service: "sedes-backend" }));
 
 export default app;
