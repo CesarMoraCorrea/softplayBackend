@@ -42,7 +42,14 @@ registerRoute("/users", userRoutes);
 registerRoute("/captcha", captchaRoutes);
 
 // Healthcheck
-app.get("/api/health", (req, res) => res.json({ ok: true, service: "sedes-backend" }));
-app.get("/health", (req, res) => res.json({ ok: true, service: "sedes-backend" }));
+const healthPayload = () => ({
+	ok: true,
+	service: "sedes-backend",
+	commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
+	branch: process.env.VERCEL_GIT_COMMIT_REF || null
+});
+
+app.get("/api/health", (req, res) => res.json(healthPayload()));
+app.get("/health", (req, res) => res.json(healthPayload()));
 
 export default app;
