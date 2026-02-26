@@ -28,15 +28,21 @@ const __dirname = path.dirname(__filename);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Rutas
-app.use("/api/auth", authRoutes);
-app.use("/api/sedes", sedeRoutes);
-app.use("/api/reservas", reservaRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/captcha", captchaRoutes);
+const registerRoute = (path, router) => {
+	app.use(`/api${path}`, router);
+	app.use(path, router);
+};
+
+registerRoute("/auth", authRoutes);
+registerRoute("/sedes", sedeRoutes);
+registerRoute("/reservas", reservaRoutes);
+registerRoute("/upload", uploadRoutes);
+registerRoute("/payments", paymentRoutes);
+registerRoute("/users", userRoutes);
+registerRoute("/captcha", captchaRoutes);
 
 // Healthcheck
 app.get("/api/health", (req, res) => res.json({ ok: true, service: "sedes-backend" }));
+app.get("/health", (req, res) => res.json({ ok: true, service: "sedes-backend" }));
 
 export default app;
