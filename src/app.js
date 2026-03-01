@@ -46,9 +46,7 @@ const healthPayload = () => ({
 	ok: true,
 	service: "sedes-backend",
 	commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
-	branch: process.env.VERCEL_GIT_COMMIT_REF || null,
-	path: req.path,
-	url: req.url
+	branch: process.env.VERCEL_GIT_COMMIT_REF || null
 });
 
 app.get("/api/health", (req, res) => res.json(healthPayload()));
