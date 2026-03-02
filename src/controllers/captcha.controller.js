@@ -1,7 +1,5 @@
 import svgCaptcha from 'svg-captcha';
-
-// Almacén temporal para los captchas (en producción usar Redis)
-const captchaStore = new Map();
+import Captcha from '../models/Captcha.js';
 
 // Configuración del CAPTCHA
 const captchaConfig = {
@@ -19,19 +17,16 @@ export const generateCaptcha = async (req, res) => {
   try {
     // Generar CAPTCHA
     const captcha = svgCaptcha.create(captchaConfig);
-    
+
     // Generar ID único para el captcha
     const captchaId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    
-    // Almacenar el texto del captcha con expiración de 5 minutos
-    captchaStore.set(captchaId, {
-      text: captcha.text.toLowerCase(),
-      expires: Date.now() + 5 * 60 * 1000 // 5 minutos
+
+    // Almacenar el texto del captcha en MongoDB
+    await Captcha.create({
+      captchaId,
+      text: captcha.text.toLowerCase()
     });
-    
-    // Limpiar captchas expirados
-    cleanExpiredCaptchas();
-    
+
     res.json({
       captchaId,
       captchaSvg: captcha.data
@@ -42,27 +37,20 @@ export const generateCaptcha = async (req, res) => {
   }
 };
 
-export const validateCaptcha = (captchaId, userInput) => {
+export const validateCaptcha = async (captchaId, userInput) => {
   if (!captchaId || !userInput) {
     return false;
   }
-  
-  const captchaData = captchaStore.get(captchaId);
-  
+
+  // Buscar y eliminar el captcha al mismo tiempo para un solo uso
+  const captchaData = await Captcha.findOneAndDelete({ captchaId });
+
   if (!captchaData) {
-    return false; // CAPTCHA no encontrado
+    return false; // CAPTCHA no encontrado o expirado por TTL
   }
-  
-  if (Date.now() > captchaData.expires) {
-    captchaStore.delete(captchaId);
-    return false; // CAPTCHA expirado
-  }
-  
+
   const isValid = captchaData.text === userInput.toLowerCase().trim();
-  
-  // Eliminar el captcha después de usarlo (un solo uso)
-  captchaStore.delete(captchaId);
-  
+
   return isValid;
 };
 
@@ -74,13 +62,9 @@ export const checkCaptcha = async (req, res) => {
       return res.status(400).json({ valid: false, message: "Faltan parámetros" });
     }
 
-    const captchaData = captchaStore.get(captchaId);
+    const captchaData = await Captcha.findOne({ captchaId });
     if (!captchaData) {
-      return res.status(400).json({ valid: false, message: "CAPTCHA no encontrado" });
-    }
-
-    if (Date.now() > captchaData.expires) {
-      return res.status(400).json({ valid: false, message: "CAPTCHA expirado" });
+      return res.status(400).json({ valid: false, message: "CAPTCHA no encontrado o expirado" });
     }
 
     const valid = captchaData.text === String(captchaInput).toLowerCase().trim();
@@ -90,16 +74,3 @@ export const checkCaptcha = async (req, res) => {
     return res.status(500).json({ valid: false, message: 'Error interno del servidor' });
   }
 };
-
-// Función para limpiar captchas expirados
-const cleanExpiredCaptchas = () => {
-  const now = Date.now();
-  for (const [id, data] of captchaStore.entries()) {
-    if (now > data.expires) {
-      captchaStore.delete(id);
-    }
-  }
-};
-
-// Limpiar captchas expirados cada 10 minutos
-setInterval(cleanExpiredCaptchas, 10 * 60 * 1000);
