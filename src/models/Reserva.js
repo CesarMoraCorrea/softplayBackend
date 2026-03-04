@@ -8,7 +8,7 @@ const reservaSchema = new mongoose.Schema({
   horaInicio: { type: String, required: true },
   horaFin: { type: String, required: true },
   total: { type: Number, required: true, min: 0 },
-  estadoPago: { type: String, enum: ["pendiente", "pagado"], default: "pendiente" },
+  estadoPago: { type: String, enum: ["pendiente", "pagado", "bloqueado"], default: "pendiente" },
   paymentIntentId: String,
   paymentMethod: { type: String, enum: ["stripe", "paypal", "test"], default: "stripe" },
   paymentStatus: { type: String, enum: ["pending", "processing", "succeeded", "failed", "canceled"], default: "pending" },
@@ -18,5 +18,7 @@ const reservaSchema = new mongoose.Schema({
 });
 
 reservaSchema.index({ sede: 1, escenario: 1, fecha: 1, horaInicio: 1, horaFin: 1 });
+// TTL Index de Mongoose: Expira/Borra la reserva en 5 min (300 segs) si se quedó en "bloqueado"
+reservaSchema.index({ createdAt: 1 }, { expireAfterSeconds: 300, partialFilterExpression: { estadoPago: "bloqueado" } });
 
 export default mongoose.model("Reserva", reservaSchema);
