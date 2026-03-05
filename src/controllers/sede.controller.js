@@ -12,6 +12,21 @@ const normalizeText = (text) => {
     .replace(/[\u0300-\u036f]/g, ""); // Remover tildes y acentos
 };
 
+const parseHorarioPorDia = (horarioInput) => {
+  if (Array.isArray(horarioInput) && horarioInput.length === 7) {
+    return horarioInput.map(dia => ({
+      isAbierto: dia.isAbierto ?? true,
+      apertura: dia.apertura || "06:00",
+      cierre: dia.cierre || "22:00",
+      descansos: Array.isArray(dia.descansos) ? dia.descansos.map(d => ({
+        inicio: d.inicio,
+        fin: d.fin
+      })).filter(d => d.inicio && d.fin) : []
+    }));
+  }
+  return Array(7).fill({ isAbierto: true, apertura: "06:00", cierre: "22:00", descansos: [] });
+};
+
 const haversineKm = (lat1, lng1, lat2, lng2) => {
   const toRad = (value) => (value * Math.PI) / 180;
   const earthRadiusKm = 6371;
@@ -32,21 +47,29 @@ const normalizeSedePayload = (payload, userId) => {
 
   const escenarios = Array.isArray(payload?.escenarios) && payload.escenarios.length
     ? payload.escenarios.map((esc) => ({
-        ...esc,
-        // Asegurar que cada escenario tenga _id (Mongoose lo generará al guardar si no existe)
-        nombre: esc.nombre || "Escenario principal",
-        tipoDeporte: esc.tipoDeporte || "Fútbol",
-        superficie: esc.superficie || "Sintética",
-        precioPorHora: toNumber(esc.precioPorHora, 0),
-        activo: esc.activo !== false,
-      }))
+      ...esc,
+      // Asegurar que cada escenario tenga _id (Mongoose lo generará al guardar si no existe)
+      nombre: esc.nombre || "Escenario principal",
+      tipoDeporte: esc.tipoDeporte || "Fútbol",
+      superficie: esc.superficie || "Sintética",
+      precioPorHora: toNumber(esc.precioPorHora, 0),
+      activo: esc.activo !== false,
+      imagenes: Array.isArray(esc.imagenes) ? esc.imagenes : [],
+      usarHorarioPersonalizado: esc.usarHorarioPersonalizado === true,
+      configuracionHorario: esc.usarHorarioPersonalizado ? {
+        horarioPorDia: parseHorarioPorDia(esc.configuracionHorario?.horarioPorDia),
+        intervaloMinutos: Number(esc.configuracionHorario?.intervaloMinutos) === 30 ? 30 : 60
+      } : undefined
+    }))
     : [{
-        nombre: payload?.nombre || "Escenario principal",
-        tipoDeporte: payload?.tipoCancha || payload?.tipoDeporte || "Fútbol",
-        superficie: payload?.superficie || "Sintética",
-        precioPorHora: toNumber(payload?.precioHora, 0),
-        activo: payload?.activa ?? true
-      }];
+      nombre: payload?.nombre || "Escenario principal",
+      tipoDeporte: payload?.tipoCancha || payload?.tipoDeporte || "Fútbol",
+      superficie: payload?.superficie || "Sintética",
+      precioPorHora: toNumber(payload?.precioHora, 0),
+      activo: payload?.activa ?? true,
+      imagenes: Array.isArray(payload?.imagenesEscenario) ? payload.imagenesEscenario : [],
+      usarHorarioPersonalizado: false
+    }];
 
   return {
     nombre: payload?.nombre,
@@ -61,6 +84,11 @@ const normalizeSedePayload = (payload, userId) => {
     servicios: payload?.servicios || [],
     escenarios,
     activa: payload?.activa ?? true,
+    imagenes: Array.isArray(payload?.imagenes) ? payload.imagenes : [],
+    configuracionHorario: {
+      horarioPorDia: parseHorarioPorDia(payload?.configuracionHorario?.horarioPorDia),
+      intervaloMinutos: Number(payload?.configuracionHorario?.intervaloMinutos) === 30 ? 30 : 60
+    },
     propietario: userId
   };
 };
@@ -85,6 +113,9 @@ const flattenSedeEscenarios = (sedeDoc) => {
       tipoCancha: escenario.tipoDeporte,
       superficie: escenario.superficie,
       servicios: sede.servicios || [],
+      configuracionHorarioSede: sede.configuracionHorario,
+      usarHorarioPersonalizado: escenario.usarHorarioPersonalizado,
+      configuracionHorario: escenario.configuracionHorario,
       horarios: [],
       imagenes: []
     }));
@@ -206,28 +237,28 @@ export const listSedes = async (req, res) => {
       sedesPayload = sedesPayload
         .map((item) => {
           let relevancia = 0;
-          
+
           // Búsqueda exacta en nombre: relevancia alta
           if (normalizeText(item.nombre).includes(term)) {
             relevancia += 100;
           }
-          
+
           // Búsqueda en dirección: relevancia media
           if (normalizeText(item.ubicacion?.direccion || "").includes(term)) {
             relevancia += 50;
           }
-          
+
           // Búsqueda en barrio: relevancia media
           if (normalizeText(item.ubicacion?.barrio || "").includes(term)) {
             relevancia += 50;
           }
-          
+
           // Búsqueda en tipoDeporte de escenarios: relevancia media-baja
           const tiposDeDeporte = (item.escenarios || []).map((e) => e.tipoDeporte);
           if (tiposDeDeporte.some((tipo) => normalizeText(tipo).includes(term))) {
             relevancia += 75;
           }
-          
+
           return { ...item, relevancia };
         })
         .filter((item) => item.relevancia > 0) // Solo sedes con al menos una coincidencia
@@ -330,6 +361,9 @@ export const getEscenario = async (req, res) => {
       tipoCancha: escenario.tipoDeporte,
       superficie: escenario.superficie,
       servicios: sede.servicios || [],
+      configuracionHorarioSede: sede.configuracionHorario,
+      usarHorarioPersonalizado: escenario.usarHorarioPersonalizado,
+      configuracionHorario: escenario.configuracionHorario,
       imagenes: []
     });
   } catch (e) {
