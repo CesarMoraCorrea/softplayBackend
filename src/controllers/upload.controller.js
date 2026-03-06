@@ -1,74 +1,65 @@
 import multer from "multer";
-import mongoose from "mongoose";
-import { Readable } from "stream";
+import { S3Client } from "@aws-sdk/client-s3";
+import multerS3 from "multer-s3";
+import path from "path";
+import dotenv from "dotenv";
 
-// Validación de tipo y límite de tamaño
+dotenv.config();
+
+// Configuración del cliente S3
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+// Filtro para aceptar solo imágenes
 const fileFilter = (req, file, cb) => {
-  if (!file.mimetype.startsWith("image/")) return cb(new Error("Solo imágenes"), false);
+  if (!file.mimetype.startsWith("image/")) {
+    return cb(new Error("Solo se permiten imágenes"), false);
+  }
   cb(null, true);
 };
-const limits = { fileSize: 5 * 1024 * 1024 }; // 5MB
 
-// Obtener bucket GridFS (asegurando conexión)
-const getBucket = async () => {
-  if (!mongoose.connection.db || mongoose.connection.readyState !== 1) {
-    const uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/canchasdb";
-    await mongoose.connect(uri);
-  }
-  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
-};
-
-export const upload = multer({ storage: multer.memoryStorage(), fileFilter, limits });
+export const upload = multer({
+  storage: multerS3({
+    s3: s3,
+    bucket: process.env.AWS_S3_BUCKET_NAME,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    metadata: function (req, file, cb) {
+      cb(null, { fieldName: file.fieldname });
+    },
+    key: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      // Retornar a la categoría 'sedes' que prefiere el usuario
+      cb(null, `sedes/${uniqueSuffix}${path.extname(file.originalname)}`);
+    },
+  }),
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
 
 export const handleUpload = async (req, res) => {
   try {
-    const bucket = await getBucket();
+    console.log("=== INICIANDO SUBIDA S3 ===");
+    console.log("Files:", req.files);
+    console.log("Body:", req.body);
+
     const files = req.files || [];
-
-    const saveOne = (file) =>
-      new Promise((resolve, reject) => {
-        const uploadStream = bucket.openUploadStream(file.originalname, {
-          contentType: file.mimetype,
-        });
-        Readable.from(file.buffer)
-          .pipe(uploadStream)
-          .on("error", reject)
-          .on("finish", () => {
-            const id = uploadStream.id;
-            resolve({ id: typeof id === "string" ? id : id?.toString() });
-          });
-      });
-
-    const results = await Promise.all(files.map(saveOne));
-    const ids = results.map((r) => r.id);
-    const apiBase = "/api/upload/files";
-    const urls = ids.map((id) => `${apiBase}/${id}`);
-
-    res.json({ files: ids, urls });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
-};
-
-export const streamFile = async (req, res) => {
-  try {
-    const bucket = await getBucket();
-    const id = new mongoose.Types.ObjectId(req.params.id);
-
-    const docs = await bucket.find({ _id: id }).toArray();
-    if (!docs || docs.length === 0) {
-      return res.status(404).json({ message: "Archivo no encontrado" });
+    if (files.length === 0) {
+      console.log("❌ No files received by multer");
+      return res.status(400).json({ message: "No se subió ninguna imagen" });
     }
-    const doc = docs[0];
 
-    if (doc.contentType) res.set("Content-Type", doc.contentType);
-    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    // multer-s3 añade la propiedad 'location' a cada archivo (URL pública)
+    const urls = files.map((file) => file.location);
+    console.log("✅ URLs generadas:", urls);
 
-    bucket
-      .openDownloadStream(id)
-      .on("error", () => res.status(404).end())
-      .pipe(res);
-  } catch (e) {
-    res.status(400).json({ message: "ID inválido" });
+    res.json({ message: "Imágenes subidas exitosamente", urls });
+  } catch (error) {
+    console.error("❌ Error CRITICO al subir a S3:", error);
+    res.status(500).json({ message: "Error al subir imágenes", error: error.message });
   }
 };
