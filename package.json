@@ -3,17 +3,18 @@
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
-"scripts": {
-  "dev": "nodemon server.js",
-  "kill-port": "lsof -ti:5000 | xargs -r kill -9",
-  "dev:clean": "npm run kill-port; npm run dev",
-  "seed:sedes": "node scripts/seedSedes.js",
-  "check:scenario-ids": "node scripts/checkScenarioIds.js",
-  "check:api": "node scripts/checkAPI.js",
-  "migrate:scenario-ids": "node scripts/migrateScenarioIds.js",
-  "migrate:scenario-ids-raw": "node scripts/migrateScenarioIdsRaw.js"
-},
+  "scripts": {
+    "dev": "nodemon server.js",
+    "kill-port": "lsof -ti:5000 | xargs -r kill -9",
+    "dev:clean": "npm run kill-port; npm run dev",
+    "seed:sedes": "node scripts/seedSedes.js",
+    "check:scenario-ids": "node scripts/checkScenarioIds.js",
+    "check:api": "node scripts/checkAPI.js",
+    "migrate:scenario-ids": "node scripts/migrateScenarioIds.js",
+    "migrate:scenario-ids-raw": "node scripts/migrateScenarioIdsRaw.js"
+  },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1003.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -22,6 +23,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.0",
     "multer": "^1.4.5-lts.1",
+    "multer-s3": "^3.0.1",
     "node-fetch": "^3.3.2",
     "stripe": "^16.0.0",
     "svg-captcha": "^1.4.0"

@@ -117,7 +117,7 @@ const flattenSedeEscenarios = (sedeDoc) => {
       usarHorarioPersonalizado: escenario.usarHorarioPersonalizado,
       configuracionHorario: escenario.configuracionHorario,
       horarios: [],
-      imagenes: []
+      imagenes: escenario.imagenes || []
     }));
 };
 
