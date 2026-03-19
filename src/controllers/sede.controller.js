@@ -38,6 +38,66 @@ const haversineKm = (lat1, lng1, lat2, lng2) => {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const filterBySchedule = (item, dateStr, timeSlotsStr) => {
+  if (!dateStr && !timeSlotsStr) return true;
+
+  // Si es un escenario y explícitamente NO usa horario personalizado, forzamos usar el de la Sede
+  let config;
+  if (item.escenarioId) {
+    config = (item.usarHorarioPersonalizado && item.configuracionHorario) 
+      ? item.configuracionHorario 
+      : item.configuracionHorarioSede;
+  } else {
+    config = item.configuracionHorario;
+  }
+
+  // Fallback final
+  if (!config) config = item.configuracionHorario || item.configuracionHorarioSede;
+  if (!config || !Array.isArray(config.horarioPorDia)) return true;
+
+  let dayIndex = -1;
+  if (dateStr) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      // Create local date at noon to completely eliminate timezone shifting bugs
+      const dateObj = new Date(parts[0], parseInt(parts[1]) - 1, parts[2], 12, 0, 0);
+      if (!isNaN(dateObj.getTime())) {
+        dayIndex = dateObj.getDay(); // JS getDay: 0=Domingo, 1=Lunes. Coincide exactamente con el array de DB.
+      }
+    }
+  }
+
+  const slots = timeSlotsStr ? String(timeSlotsStr).split(",").map(s => s.trim()) : [];
+
+  const checkDayConfig = (dayConfig) => {
+    if (!dayConfig || !dayConfig.isAbierto) return false;
+    
+    if (slots.length > 0) {
+      const ap = parseInt(dayConfig.apertura.split(':')[0]) || 6;
+      const ci = parseInt(dayConfig.cierre.split(':')[0]) || 22;
+
+      let matchesSlot = false;
+      if (slots.includes("Mañana (6-12h)") && ap < 12 && ci > 6) matchesSlot = true;
+      if (slots.includes("Tarde (12-18h)") && ap < 18 && ci > 12) matchesSlot = true;
+      if (slots.includes("Noche (18-24h)") && ap < 24 && ci > 18) matchesSlot = true;
+
+      if (!matchesSlot) return false;
+    }
+    return true;
+  };
+
+  if (dayIndex >= 0 && dayIndex < 7) {
+    // Si se exigió una fecha, verificamos exclusivamente el horario de ese día
+    return checkDayConfig(config.horarioPorDia[dayIndex]);
+  } else if (slots.length > 0) {
+    // Si NO se exigió fecha pero SÍ un horario (ej: Mañana), 
+    // validamos que la sede abra en ese horario al menos 1 día a la semana.
+    return config.horarioPorDia.some(dayConfig => checkDayConfig(dayConfig));
+  }
+  
+  return true;
+};
+
 const normalizeSedePayload = (payload, userId) => {
   const lat = payload?.ubicacion?.coordenadas?.coordinates?.[1] ?? payload?.ubicacion?.lat ?? payload?.lat;
   const lng = payload?.ubicacion?.coordenadas?.coordinates?.[0] ?? payload?.ubicacion?.lng ?? payload?.lng;
@@ -143,7 +203,11 @@ export const listSedes = async (req, res) => {
       lng,
       radius,
       view,
-      sedeId // Nuevo parámetro para filtrar escenarios por sede
+      sedeId, // Nuevo parámetro para filtrar escenarios por sede
+      location,
+      timeSlot,
+      date,
+      minRating
     } = req.query;
 
     const sedes = await Sede.find({ activa: true }).sort({ createdAt: -1 }).limit(150);
@@ -163,6 +227,28 @@ export const listSedes = async (req, res) => {
             .filter(Boolean)
             .some((field) => normalizeText(field).includes(term))
         );
+      }
+
+      if (location && (!lat || !lng)) {
+        const termLoc = normalizeText(location);
+        escenarios = escenarios.filter((item) =>
+          [item.direccion, item.barrio].filter(Boolean).some((field) => normalizeText(field).includes(termLoc))
+        );
+      }
+
+      if (minRating) {
+        const rating = toNumber(minRating, 0);
+        if (rating > 0) {
+          escenarios = escenarios.filter((item) => {
+            const sedeOrig = sedes.find(s => String(s._id) === item.sedeId);
+            const calificacion = sedeOrig?.calificacion || sedeOrig?.calificacionGlobal || 0;
+            return calificacion >= rating;
+          });
+        }
+      }
+
+      if (date || timeSlot) {
+        escenarios = escenarios.filter((item) => filterBySchedule(item, date, timeSlot));
       }
 
       const min = toNumber(minPrice, 0);
@@ -263,6 +349,24 @@ export const listSedes = async (req, res) => {
         })
         .filter((item) => item.relevancia > 0) // Solo sedes con al menos una coincidencia
         .sort((a, b) => b.relevancia - a.relevancia); // Ordenar por relevancia descendente
+    }
+
+    if (location && (!lat || !lng)) {
+      const termLoc = normalizeText(location);
+      sedesPayload = sedesPayload.filter(item => 
+        [item.ubicacion?.direccion, item.ubicacion?.barrio].filter(Boolean).some(field => normalizeText(field).includes(termLoc))
+      );
+    }
+
+    if (minRating) {
+      const rating = toNumber(minRating, 0);
+      if (rating > 0) {
+        sedesPayload = sedesPayload.filter((sede) => (sede.calificacion || sede.calificacionGlobal || 0) >= rating);
+      }
+    }
+
+    if (date || timeSlot) {
+      sedesPayload = sedesPayload.filter((sede) => filterBySchedule(sede, date, timeSlot));
     }
 
     const min = toNumber(minPrice, 0);
