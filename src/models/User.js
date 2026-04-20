@@ -10,6 +10,10 @@ const userSchema = new mongoose.Schema({
   phone: String,
   ciudad: { type: String, default: "Cali" },
   activo: { type: Boolean, default: true },
+  mpAccessToken: { type: String },
+  mpPublicKey: { type: String },
+  mpRefreshToken: { type: String },
+  mpUserId: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

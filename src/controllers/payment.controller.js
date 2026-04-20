@@ -1,5 +1,8 @@
 import Stripe from "stripe";
 import Reserva from "../models/Reserva.js";
+import Sede from "../models/Sede.js";
+import User from "../models/User.js";
+import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -42,6 +45,46 @@ export const createPaymentIntent = async (req, res) => {
       res.json({ 
         clientSecret: intent.client_secret,
         paymentMethod: "stripe"
+      });
+    } else if (paymentMethod === "mercadopago") {
+      const sede = await Sede.findById(reserva.sede).populate("propietario");
+      if (!sede || !sede.propietario || !sede.propietario.mpAccessToken) {
+        return res.status(400).json({ message: "La sede no tiene configurado MercadoPago (MP Accesstoken missing)." });
+      }
+
+      const client = new MercadoPagoConfig({ accessToken: sede.propietario.mpAccessToken });
+      const preference = new Preference(client);
+
+      const prefData = {
+        body: {
+          items: [
+            {
+              id: reserva._id.toString(),
+              title: `Reserva Cancha - ${sede.nombre}`,
+              quantity: 1,
+              unit_price: Number(reserva.total)
+            }
+          ],
+          back_urls: {
+            success: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=success&reservaId=${reserva._id}`,
+            failure: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=failure&reservaId=${reserva._id}`,
+            pending: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=pending&reservaId=${reserva._id}`
+          },
+          auto_return: "approved",
+          external_reference: reserva._id.toString(),
+          notification_url: `${process.env.BACKEND_URL || "https://api.softplay.com"}/api/payments/webhook/mercadopago`
+        }
+      };
+
+      const result = await preference.create(prefData);
+      
+      reserva.mpPreferenceId = result.id;
+      await reserva.save();
+      
+      res.json({
+        preferenceId: result.id,
+        init_point: result.init_point,
+        paymentMethod: "mercadopago"
       });
     } else if (paymentMethod === "paypal") {
       // PayPal Sandbox - simulación
@@ -105,6 +148,11 @@ export const confirmPayment = async (req, res) => {
       } else {
         reserva.paymentStatus = "failed";
       }
+    } else if (paymentMethod === "mercadopago") {
+      reserva.estadoPago = "pagado";
+      reserva.paymentStatus = "succeeded";
+      reserva.transactionId = transactionId || reserva.mpPaymentId;
+      reserva.paymentDate = new Date();
     } else if (paymentMethod === "paypal") {
       // Simulación de confirmación de PayPal
       reserva.estadoPago = "pagado";
@@ -175,10 +223,40 @@ export const stripeWebhook = async (req, res) => {
   }
 };
 
+export const mpWebhook = async (req, res) => {
+  try {
+    const { action, data, type } = req.body;
+    const paymentId = data?.id || req.query["data.id"] || req.query.id;
+    const topic = type || req.query.topic;
+
+    if (topic === "payment" && paymentId) {
+      // Necesitamos buscar el pago. Podemos buscarlo usando el access token global de la plataforma, 
+      // pero si el pago lo hizo el vendedor, tal vez nos rechace. 
+      // Por ahora, como es webhook, lo marcaremos si nos envian algo valido (la verificacion real requiere el token del vendedor).
+      // Buscar la reserva que tiene este paymentId (si lo guardamos en frontend), o confiar por ahora en una verificacion diferida.
+      // Para integraciones maduras, MarketPlace Webhooks deberían identificar el user_id del vendedor.
+      
+      console.log(`Webhook MercadoPago - Pago actualizado: ${paymentId}`);
+    }
+
+    res.status(200).send("OK");
+  } catch (e) {
+    console.error("MP Webhook error:", e);
+    res.status(400).json({ message: e.message });
+  }
+};
+
 // Obtener métodos de pago disponibles
 export const getPaymentMethods = async (req, res) => {
   try {
     const methods = [
+      {
+        id: "mercadopago",
+        name: "MercadoPago",
+        description: "Paga de forma segura con MercadoPago",
+        enabled: true,
+        testMode: false
+      },
       {
         id: "stripe",
         name: "Tarjeta de Crédito/Débito",

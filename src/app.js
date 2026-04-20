@@ -11,6 +11,7 @@ import uploadRoutes from "./routes/upload.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import captchaRoutes from "./routes/captcha.routes.js";
+import mercadopagoRoutes from "./routes/mercadopago.routes.js";
 
 // Cargar variables de entorno y conectar a la BD
 dotenv.config();
@@ -20,7 +21,9 @@ const app = express();
 const corsOptions = {
 	origin: [
 		'http://localhost:5173',
-		/^https:\/\/.*\.vercel\.app$/ // Permite cualquier subdominio de Vercel (develop, main, previews)
+		'http://127.0.0.1:5173',
+		/^https:\/\/.*\.vercel\.app$/, // Permite cualquier subdominio de Vercel (develop, main, previews)
+		/^https:\/\/.*\.loca\.lt$/ // Permite subdominios de LocalTunnel
 	],
 	methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
 	credentials: true,
@@ -50,6 +53,7 @@ registerRoute("/upload", uploadRoutes);
 registerRoute("/payments", paymentRoutes);
 registerRoute("/users", userRoutes);
 registerRoute("/captcha", captchaRoutes);
+registerRoute("/mercadopago", mercadopagoRoutes);
 
 // Healthcheck
 const healthPayload = () => ({
