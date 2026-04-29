@@ -4,9 +4,9 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "dev": "npm run kill-port; nodemon server.js",
-    "kill-port": "lsof -ti:5000 | xargs -r kill -9",
-    "dev:clean": "npm run kill-port; npm run dev",
+    "dev": "nodemon server.js",
+    "kill-port": "npx kill-port 5000",
+    "dev:clean": "npx kill-port 5000 && nodemon server.js",
     "seed:sedes": "node scripts/seedSedes.js",
     "check:scenario-ids": "node scripts/checkScenarioIds.js",
     "check:api": "node scripts/checkAPI.js",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1003.0",
+    "@mercadopago/sdk-react": "^1.0.7",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

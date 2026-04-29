@@ -48,14 +48,19 @@ export const createPaymentIntent = async (req, res) => {
       });
     } else if (paymentMethod === "mercadopago") {
       const sede = await Sede.findById(reserva.sede).populate("propietario");
-      if (!sede || !sede.propietario || !sede.propietario.mpAccessToken) {
-        return res.status(400).json({ message: "La sede no tiene configurado MercadoPago (MP Accesstoken missing)." });
+      
+      // MODO PRUEBA: Usar variable de entorno global (cuenta vendedor de prueba) si existe, 
+      // si no, intenta con el de la sede.
+      const mpToken = process.env.MP_ACCESS_TOKEN || (sede && sede.propietario ? sede.propietario.mpAccessToken : null);
+
+      if (!mpToken) {
+        return res.status(400).json({ message: "No hay token de MercadoPago configurado (ni en entorno ni en la sede)." });
       }
 
-      const client = new MercadoPagoConfig({ accessToken: sede.propietario.mpAccessToken });
+      const client = new MercadoPagoConfig({ accessToken: mpToken });
       const preference = new Preference(client);
 
-      const prefData = {
+      const result = await preference.create({
         body: {
           items: [
             {
@@ -66,17 +71,15 @@ export const createPaymentIntent = async (req, res) => {
             }
           ],
           back_urls: {
-            success: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=success&reservaId=${reserva._id}`,
-            failure: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=failure&reservaId=${reserva._id}`,
-            pending: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=pending&reservaId=${reserva._id}`
+            success: `https://www.google.com`,
+            failure: `https://www.google.com`,
+            pending: `https://www.google.com`
           },
           auto_return: "approved",
           external_reference: reserva._id.toString(),
           notification_url: `${process.env.BACKEND_URL || "https://api.softplay.com"}/api/payments/webhook/mercadopago`
         }
-      };
-
-      const result = await preference.create(prefData);
+      });
       
       reserva.mpPreferenceId = result.id;
       await reserva.save();
