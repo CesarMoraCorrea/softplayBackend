@@ -71,11 +71,10 @@ export const createPaymentIntent = async (req, res) => {
             }
           ],
           back_urls: {
-            success: `https://www.google.com`,
-            failure: `https://www.google.com`,
-            pending: `https://www.google.com`
+            success: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=success`,
+            failure: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=failure`,
+            pending: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=pending`
           },
-          auto_return: "approved",
           external_reference: reserva._id.toString(),
           notification_url: `${process.env.BACKEND_URL || "https://api.softplay.com"}/api/payments/webhook/mercadopago`
         }
@@ -86,7 +85,7 @@ export const createPaymentIntent = async (req, res) => {
       
       res.json({
         preferenceId: result.id,
-        init_point: result.init_point,
+        init_point: result.sandbox_init_point || result.init_point,
         paymentMethod: "mercadopago"
       });
     } else if (paymentMethod === "paypal") {
