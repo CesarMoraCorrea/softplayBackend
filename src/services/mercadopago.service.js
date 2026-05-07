@@ -113,7 +113,8 @@ export async function createReservationPreference({ reserva, sede, propietario }
           currency_id: "COP",
         },
       ],
-      marketplace_fee: marketplaceFee,
+      // marketplace_fee deshabilitado: requiere app registrada como Marketplace con OAuth real
+      // marketplace_fee: marketplaceFee,
       external_reference: reserva._id.toString(),
       metadata: {
         reservaId: reserva._id.toString(),
