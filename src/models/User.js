@@ -12,8 +12,13 @@ const userSchema = new mongoose.Schema({
   activo: { type: Boolean, default: true },
   mpAccessToken: { type: String },
   mpPublicKey: { type: String },
-  mpRefreshToken: { type: String },
+  mpRefreshToken: { type: String, select: false },
   mpUserId: { type: String },
+  mpConnected: { type: Boolean, default: false },
+  mpTokenType: { type: String },
+  mpScope: { type: String },
+  mpExpiresAt: { type: Date },
+  mpLiveMode: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
