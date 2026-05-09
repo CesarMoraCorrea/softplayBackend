@@ -12,6 +12,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import captchaRoutes from "./routes/captcha.routes.js";
 import mercadopagoRoutes from "./routes/mercadopago.routes.js";
+import statsRoutes from "./routes/stats.routes.js";
 
 // Cargar variables de entorno y conectar a la BD
 dotenv.config();
@@ -54,6 +55,7 @@ registerRoute("/payments", paymentRoutes);
 registerRoute("/users", userRoutes);
 registerRoute("/captcha", captchaRoutes);
 registerRoute("/mercadopago", mercadopagoRoutes);
+registerRoute("/stats", statsRoutes);
 
 // Healthcheck
 const healthPayload = () => ({
