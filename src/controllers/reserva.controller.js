@@ -65,7 +65,8 @@ const normalizeReservaOutput = (reserva, sede, escenario) => {
       nombre: `${sede?.nombre || "Sede"} - ${escenario.nombre}`,
       ubicacion: { lat: coordinates[1], lng: coordinates[0] },
       tipoCancha: escenario.tipoDeporte,
-      precioHora: escenario.precioPorHora
+      precioHora: escenario.precioPorHora,
+      imagen: escenario.imagenes?.[0] || sede?.imagenes?.[0] || null
     } : null,
     horas,
     estado
