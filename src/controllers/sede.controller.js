@@ -468,7 +468,9 @@ export const getEscenario = async (req, res) => {
       configuracionHorarioSede: sede.configuracionHorario,
       usarHorarioPersonalizado: escenario.usarHorarioPersonalizado,
       configuracionHorario: escenario.configuracionHorario,
-      imagenes: []
+      imagenes: (escenario.imagenes && escenario.imagenes.length > 0)
+        ? escenario.imagenes
+        : (sede.imagenes || [])
     });
   } catch (e) {
     res.status(500).json({ message: e.message });
