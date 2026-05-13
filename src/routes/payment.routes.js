@@ -4,18 +4,26 @@ import {
   confirmPayment, 
   stripeWebhook, 
   mpWebhook,
-  getPaymentMethods 
+  getPaymentMethods,
+  getMpOAuthUrl,
+  mpOAuthCallback,
+  getMpPaymentStatus,
 } from "../controllers/payment.controller.js";
 import { protect } from "../middlewares/auth.js";
 
 const router = Router();
 
-// Rutas protegidas que requieren autenticación
+// OAuth MercadoPago para vendedores/propietarios
+router.get("/mercadopago/oauth/url", protect, getMpOAuthUrl);
+router.get("/mercadopago/oauth/callback", mpOAuthCallback);
+router.get("/mercadopago/status/:reservaId", protect, getMpPaymentStatus);
+
+// Rutas protegidas
 router.post("/intent", protect, createPaymentIntent);
 router.post("/confirm", protect, confirmPayment);
 router.get("/methods", protect, getPaymentMethods);
 
-// Webhooks (no requieren autenticación)
+// Webhooks (sin autenticación)
 router.post("/webhook/stripe", stripeWebhook);
 router.post("/webhook/mercadopago", mpWebhook);
 

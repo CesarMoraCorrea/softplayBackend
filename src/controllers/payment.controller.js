@@ -2,7 +2,13 @@ import Stripe from "stripe";
 import Reserva from "../models/Reserva.js";
 import Sede from "../models/Sede.js";
 import User from "../models/User.js";
-import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
+import { MercadoPagoConfig, Payment } from "mercadopago";
+import {
+  getOAuthUrl,
+  exchangeCodeForToken,
+  createReservationPreference,
+  getPaymentForReservation,
+} from "../services/mercadopago.service.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -48,46 +54,57 @@ export const createPaymentIntent = async (req, res) => {
       });
     } else if (paymentMethod === "mercadopago") {
       const sede = await Sede.findById(reserva.sede).populate("propietario");
-      
-      // MODO PRUEBA: Usar variable de entorno global (cuenta vendedor de prueba) si existe, 
-      // si no, intenta con el de la sede.
-      const mpToken = process.env.MP_ACCESS_TOKEN || (sede && sede.propietario ? sede.propietario.mpAccessToken : null);
+      if (!sede) return res.status(404).json({ message: "Sede no encontrada" });
 
-      if (!mpToken) {
-        return res.status(400).json({ message: "No hay token de MercadoPago configurado (ni en entorno ni en la sede)." });
+      const propietario = sede.propietario;
+
+      // Fallback en desarrollo: si no hay propietario conectado, usar token global
+      let result, marketplaceFee;
+      if (propietario && propietario.mpConnected) {
+        ({ result, marketplaceFee } = await createReservationPreference({ reserva, sede, propietario }));
+      } else {
+        // Fallback solo en desarrollo con token global
+        console.warn("[MP] Propietario sin MP conectado, usando token global de plataforma (solo dev)");
+        const { MercadoPagoConfig: MPConfig, Preference } = await import("mercadopago");
+        const globalToken = process.env.MP_ACCESS_TOKEN;
+        if (!globalToken) return res.status(400).json({ message: "No hay token de MercadoPago configurado" });
+
+        const client = new MPConfig({ accessToken: globalToken });
+        const preferenceApi = new Preference(client);
+        marketplaceFee = 0;
+
+        result = await preferenceApi.create({
+          body: {
+            items: [{ id: reserva._id.toString(), title: `Reserva Cancha - ${sede.nombre}`, quantity: 1, unit_price: Number(reserva.total), currency_id: "COP" }],
+            external_reference: reserva._id.toString(),
+            metadata: { reservaId: reserva._id.toString(), userId: reserva.usuario.toString() },
+            notification_url: `${process.env.BACKEND_URL || "http://localhost:5000"}/api/payments/webhook/mercadopago`,
+            back_urls: {
+              success: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=success&reservaId=${reserva._id}`,
+              failure: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=failure&reservaId=${reserva._id}`,
+              pending: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=pending&reservaId=${reserva._id}`,
+            },
+          },
+        });
       }
 
-      const client = new MercadoPagoConfig({ accessToken: mpToken });
-      const preference = new Preference(client);
-
-      const result = await preference.create({
-        body: {
-          items: [
-            {
-              id: reserva._id.toString(),
-              title: `Reserva Cancha - ${sede.nombre}`,
-              quantity: 1,
-              unit_price: Number(reserva.total)
-            }
-          ],
-          back_urls: {
-            success: `https://www.google.com`,
-            failure: `https://www.google.com`,
-            pending: `https://www.google.com`
-          },
-          auto_return: "approved",
-          external_reference: reserva._id.toString(),
-          notification_url: `${process.env.BACKEND_URL || "https://api.softplay.com"}/api/payments/webhook/mercadopago`
-        }
-      });
-      
       reserva.mpPreferenceId = result.id;
+      reserva.mpInitPoint = result.init_point;
+      reserva.mpSandboxInitPoint = result.sandbox_init_point;
+      reserva.mpMarketplaceFee = marketplaceFee;
+      reserva.paymentMethod = "mercadopago";
+      reserva.paymentStatus = "processing";
       await reserva.save();
-      
-      res.json({
+
+      const checkoutUrl = result.sandbox_init_point || result.init_point;
+      console.log(`[MP] Preferencia creada: ${result.id} | Fee: ${marketplaceFee} | URL: ${checkoutUrl}`);
+
+      return res.json({
         preferenceId: result.id,
         init_point: result.init_point,
-        paymentMethod: "mercadopago"
+        sandbox_init_point: result.sandbox_init_point,
+        checkoutUrl,
+        paymentMethod: "mercadopago",
       });
     } else if (paymentMethod === "paypal") {
       // PayPal Sandbox - simulación
@@ -227,25 +244,86 @@ export const stripeWebhook = async (req, res) => {
 };
 
 export const mpWebhook = async (req, res) => {
-  try {
-    const { action, data, type } = req.body;
-    const paymentId = data?.id || req.query["data.id"] || req.query.id;
-    const topic = type || req.query.topic;
+  // Responder 200 inmediatamente para que MP no reintente
+  res.status(200).send("OK");
 
-    if (topic === "payment" && paymentId) {
-      // Necesitamos buscar el pago. Podemos buscarlo usando el access token global de la plataforma, 
-      // pero si el pago lo hizo el vendedor, tal vez nos rechace. 
-      // Por ahora, como es webhook, lo marcaremos si nos envian algo valido (la verificacion real requiere el token del vendedor).
-      // Buscar la reserva que tiene este paymentId (si lo guardamos en frontend), o confiar por ahora en una verificacion diferida.
-      // Para integraciones maduras, MarketPlace Webhooks deberían identificar el user_id del vendedor.
-      
-      console.log(`Webhook MercadoPago - Pago actualizado: ${paymentId}`);
+  try {
+    const { data, type } = req.body;
+    const topic = type || req.query.topic;
+    const paymentId = data?.id || req.query["data.id"] || req.query.id;
+
+    if (topic !== "payment" || !paymentId) return;
+
+    console.log(`[MP Webhook] topic=${topic} paymentId=${paymentId}`);
+
+    // Buscar la reserva por preferenceId o external_reference
+    // Primero intentamos con token global para consultar el pago
+    let payment;
+    const globalToken = process.env.MP_ACCESS_TOKEN;
+    if (globalToken) {
+      try {
+        const client = new MercadoPagoConfig({ accessToken: globalToken });
+        const paymentApi = new Payment(client);
+        payment = await paymentApi.get({ id: paymentId });
+      } catch (e) {
+        console.warn("[MP Webhook] No se pudo consultar con token global:", e.message);
+      }
     }
 
-    res.status(200).send("OK");
+    // Determinar reservaId desde external_reference o metadata
+    const reservaId = payment?.external_reference || payment?.metadata?.reservaId;
+    if (!reservaId) {
+      console.warn("[MP Webhook] No se encontró reservaId en el pago:", paymentId);
+      return;
+    }
+
+    const reserva = await Reserva.findById(reservaId).populate({
+      path: "sede",
+      populate: { path: "propietario" },
+    });
+
+    if (!reserva) {
+      console.warn("[MP Webhook] Reserva no encontrada:", reservaId);
+      return;
+    }
+
+    // Si el propietario tiene token propio, re-consultar con él para validez
+    const propietario = reserva.sede?.propietario;
+    if (propietario?.mpConnected && propietario?.mpAccessToken) {
+      try {
+        payment = await getPaymentForReservation(paymentId, propietario);
+      } catch (e) {
+        console.warn("[MP Webhook] Re-consulta con token propietario falló, usando consulta global:", e.message);
+      }
+    }
+
+    if (!payment) {
+      console.warn("[MP Webhook] No se pudo obtener datos del pago:", paymentId);
+      return;
+    }
+
+    const status = payment.status;
+    console.log(`[MP Webhook] Reserva ${reservaId} | Estado pago: ${status}`);
+
+    // Idempotente: no duplicar si ya está pagada
+    if (reserva.estadoPago === "pagado" && status === "approved") return;
+
+    if (status === "approved") {
+      reserva.estadoPago = "pagado";
+      reserva.paymentStatus = "succeeded";
+      reserva.mpPaymentId = String(payment.id);
+      reserva.transactionId = String(payment.id);
+      reserva.paymentDate = new Date();
+    } else if (status === "rejected" || status === "cancelled") {
+      reserva.paymentStatus = "failed";
+    } else if (status === "pending" || status === "in_process") {
+      reserva.paymentStatus = "processing";
+    }
+
+    await reserva.save();
+    console.log(`[MP Webhook] Reserva ${reservaId} actualizada a: ${reserva.paymentStatus}`);
   } catch (e) {
-    console.error("MP Webhook error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("[MP Webhook] Error:", e.message);
   }
 };
 
@@ -284,6 +362,72 @@ export const getPaymentMethods = async (req, res) => {
     ];
     
     res.json(methods.filter(method => method.enabled));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+// GET /api/payments/mercadopago/oauth/url — URL de autorización para el vendedor
+export const getMpOAuthUrl = (req, res) => {
+  try {
+    const url = getOAuthUrl(req.user._id);
+    res.json({ url });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+// GET /api/payments/mercadopago/oauth/callback — Callback de OAuth MP
+export const mpOAuthCallback = async (req, res) => {
+  const { code, state } = req.query;
+  const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+  if (!code || !state) {
+    return res.redirect(`${FRONTEND_URL}/dashboard?mp_connected=false&error=missing_params`);
+  }
+
+  try {
+    const data = await exchangeCodeForToken(code);
+    const expiresAt = new Date(Date.now() + (data.expires_in || 15552000) * 1000);
+
+    await User.findByIdAndUpdate(state, {
+      mpConnected: true,
+      mpAccessToken: data.access_token,
+      mpRefreshToken: data.refresh_token,
+      mpPublicKey: data.public_key,
+      mpUserId: String(data.user_id),
+      mpTokenType: data.token_type,
+      mpScope: data.scope,
+      mpExpiresAt: expiresAt,
+      mpLiveMode: data.live_mode || false,
+    });
+
+    console.log(`[MP OAuth] Vendedor ${state} conectado. UserId MP: ${data.user_id}`);
+    res.redirect(`${FRONTEND_URL}/dashboard?mp_connected=true`);
+  } catch (e) {
+    console.error("[MP OAuth] Error en callback:", e.message);
+    res.redirect(`${FRONTEND_URL}/dashboard?mp_connected=false&error=oauth_failed`);
+  }
+};
+
+// GET /api/payments/mercadopago/status/:reservaId — Consultar estado de pago de reserva
+export const getMpPaymentStatus = async (req, res) => {
+  try {
+    const reserva = await Reserva.findById(req.params.reservaId);
+    if (!reserva) return res.status(404).json({ message: "Reserva no encontrada" });
+
+    if (reserva.usuario.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Sin permisos" });
+    }
+
+    res.json({
+      reservaId: reserva._id,
+      estadoPago: reserva.estadoPago,
+      paymentStatus: reserva.paymentStatus,
+      mpPaymentId: reserva.mpPaymentId,
+      transactionId: reserva.transactionId,
+      paymentDate: reserva.paymentDate,
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
