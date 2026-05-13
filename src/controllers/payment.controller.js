@@ -80,9 +80,9 @@ export const createPaymentIntent = async (req, res) => {
             metadata: { reservaId: reserva._id.toString(), userId: reserva.usuario.toString() },
             notification_url: `${process.env.BACKEND_URL || "http://localhost:5000"}/api/payments/webhook/mercadopago`,
             back_urls: {
-              success: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=success&reservaId=${reserva._id}`,
-              failure: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=failure&reservaId=${reserva._id}`,
-              pending: `${process.env.FRONTEND_URL || "http://localhost:5173"}/mis-reservas?status=pending&reservaId=${reserva._id}`,
+              success: `${process.env.FRONTEND_URL || "http://localhost:5173"}/pago-resultado?status=success&reservaId=${reserva._id}`,
+              failure: `${process.env.FRONTEND_URL || "http://localhost:5173"}/pago-resultado?status=failure&reservaId=${reserva._id}`,
+              pending: `${process.env.FRONTEND_URL || "http://localhost:5173"}/pago-resultado?status=pending&reservaId=${reserva._id}`,
             },
           },
         });
@@ -420,13 +420,46 @@ export const getMpPaymentStatus = async (req, res) => {
       return res.status(403).json({ message: "Sin permisos" });
     }
 
+    // Si sigue en processing, consultar MP directamente (necesario en localhost donde el webhook no llega)
+    if (reserva.paymentStatus === "processing" && reserva.estadoPago !== "pagado") {
+      try {
+        const accessToken = process.env.MP_ACCESS_TOKEN;
+        const searchRes = await fetch(
+          `https://api.mercadopago.com/v1/payments/search?external_reference=${reserva._id}&sort=date_created&criteria=desc`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (searchRes.ok) {
+          const mpData = await searchRes.json();
+          const approvedPayment = (mpData.results || []).find(p => p.status === "approved");
+          if (approvedPayment) {
+            reserva.estadoPago = "pagado";
+            reserva.paymentStatus = "succeeded";
+            reserva.estado = "pagada";
+            reserva.mpPaymentId = String(approvedPayment.id);
+            reserva.transactionId = String(approvedPayment.id);
+            reserva.paymentDate = new Date();
+            await reserva.save();
+            console.log(`[MP] Pago confirmado via polling: reserva ${reserva._id}, pago ${approvedPayment.id}`);
+          }
+        }
+      } catch (mpErr) {
+        console.error("[MP] Error consultando pagos en MP:", mpErr.message);
+      }
+    }
+
     res.json({
       reservaId: reserva._id,
       estadoPago: reserva.estadoPago,
+      estado: reserva.estado,
       paymentStatus: reserva.paymentStatus,
       mpPaymentId: reserva.mpPaymentId,
       transactionId: reserva.transactionId,
       paymentDate: reserva.paymentDate,
+      // Datos para mostrar en pantalla de éxito
+      fecha: reserva.fecha,
+      horaInicio: reserva.horaInicio,
+      horaFin: reserva.horaFin,
+      total: reserva.total,
     });
   } catch (e) {
     res.status(500).json({ message: e.message });
