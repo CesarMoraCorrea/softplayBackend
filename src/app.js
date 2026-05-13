@@ -23,6 +23,8 @@ const corsOptions = {
 	origin: [
 		'http://localhost:5173',
 		'http://127.0.0.1:5173',
+		'https://softplay.fit',       // Dominio personalizado en Vercel
+		'https://www.softplay.fit',   // Variante con www
 		/^https:\/\/.*\.vercel\.app$/, // Permite cualquier subdominio de Vercel (develop, main, previews)
 		/^https:\/\/.*\.loca\.lt$/ // Permite subdominios de LocalTunnel
 	],
