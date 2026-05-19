@@ -124,9 +124,9 @@ export async function createReservationPreference({ reserva, sede, propietario }
       },
       notification_url: `${BACKEND_URL}/api/payments/webhook/mercadopago`,
       back_urls: {
-        success: `${FRONTEND_URL}/mis-reservas?status=success&reservaId=${reserva._id}`,
-        failure: `${FRONTEND_URL}/mis-reservas?status=failure&reservaId=${reserva._id}`,
-        pending: `${FRONTEND_URL}/mis-reservas?status=pending&reservaId=${reserva._id}`,
+        success: `${FRONTEND_URL}/pago-resultado?status=success&reservaId=${reserva._id}`,
+        failure: `${FRONTEND_URL}/pago-resultado?status=failure&reservaId=${reserva._id}`,
+        pending: `${FRONTEND_URL}/pago-resultado?status=pending&reservaId=${reserva._id}`,
       },
     },
   });
