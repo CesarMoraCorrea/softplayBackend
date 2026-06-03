@@ -1,0 +1,82 @@
+name: Deploy Backend to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - feature/migracionGCP
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }} # ID de tu proyecto GCP
+  GAR_LOCATION: us-central1 # Región del Artifact Registry (ej. us-central1)
+  REPOSITORY: softplay-repo # Nombre del repositorio en Artifact Registry
+  REGION: us-central1 # Región donde se desplegará el servicio de Cloud Run
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Autenticación con GCP usando la clave JSON de cuenta de servicio (guardada en secretos de GitHub)
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # Configurar la CLI de Cloud SDK
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Autenticar Docker para subir imágenes a Google Artifact Registry
+      - name: Authenticate Docker to GAR
+        run: |
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      # Definir el nombre del servicio en Cloud Run dependiendo de la rama (producción vs desarrollo)
+      - name: Set Environment Variables
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "SERVICE_NAME=softplay-backend-prod" >> $GITHUB_ENV
+          else
+            echo "SERVICE_NAME=softplay-backend-dev" >> $GITHUB_ENV
+          fi
+
+      # Construir y empujar la imagen a Artifact Registry
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE_TAG="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # Desplegar en Cloud Run exponiendo el puerto 8080
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE_TAG }}
+          flags: '--allow-unauthenticated'
+          env_vars: |
+            PORT=8080
+            MONGO_URI=${{ secrets.MONGO_URI }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            STRIPE_SECRET=${{ secrets.STRIPE_SECRET }}
+            MP_CLIENT_ID=${{ secrets.MP_CLIENT_ID }}
+            MP_CLIENT_SECRET=${{ secrets.MP_CLIENT_SECRET }}
+            MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}
+            MP_ACCESS_TOKEN=${{ secrets.MP_ACCESS_TOKEN }}
+            GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}
+
+      - name: Show Output URL
+        run: echo "✅ Backend desplegado en ${{ steps.deploy.outputs.url }}"
