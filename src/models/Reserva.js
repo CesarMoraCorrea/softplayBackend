@@ -23,6 +23,8 @@ const reservaSchema = new mongoose.Schema({
 });
 
 reservaSchema.index({ sede: 1, escenario: 1, fecha: 1, horaInicio: 1, horaFin: 1 });
+reservaSchema.index({ fecha: 1 });
+reservaSchema.index({ sede: 1, fecha: 1 });
 // TTL Index de Mongoose: Expira/Borra la reserva en 5 min (300 segs) si se quedó en "bloqueado"
 reservaSchema.index({ createdAt: 1 }, { expireAfterSeconds: 300, partialFilterExpression: { estadoPago: "bloqueado" } });
 
